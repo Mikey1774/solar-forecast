@@ -131,7 +131,7 @@ svg.chart{width:100%;height:auto;display:block;overflow:visible}
 
 /* hour rows */
 .rows{display:grid;gap:2px;margin-top:4px}
-.row,.rowhead{display:grid;grid-template-columns:5rem 5.2rem minmax(0,1fr) 3.7rem;align-items:center;gap:8px;padding:9px 6px}
+.row,.rowhead{display:grid;grid-template-columns:5rem 5.2rem minmax(0,1fr) 3.3rem;align-items:center;gap:8px;padding:9px 6px}
 .row{border:0;background:transparent;border-radius:10px;text-align:left;cursor:pointer}
 .row:hover{background:var(--bg)}
 .row.sel{background:var(--accent-wash)}
@@ -219,9 +219,9 @@ details.panel ul{margin:10px 0 0 18px;font-size:13.5px;color:var(--muted);displa
 
   <section class="panel">
     <h2>Estimated output by hour</h2>
-    <p class="note">Tap a bar to show that hour on the house. Earlier hours today also show what the real sunshine would have made.</p>
+    <p class="note">Tap a bar to show that hour on the house. For hours that have passed, the dark mark is the estimate updated with satellite sunshine data from the web. It is not a reading from the panels.</p>
     <div class="chartbox"><svg class="chart" id="chart" role="img" aria-label="Bar chart of estimated solar output for each hour, with satellite-based figures for earlier hours today"></svg></div>
-    <div class="legend" id="legend"><span><i class="sw"></i>Forecast</span><span><i class="sw act"></i>From actual sunshine (satellite)</span></div>
+    <div class="legend" id="legend"><span><i class="sw"></i>Forecast</span><span><i class="sw act"></i>Updated estimate from satellite data (web, not the panels)</span></div>
   </section>
 
   <section class="panel">
@@ -243,7 +243,7 @@ details.panel ul{margin:10px 0 0 18px;font-size:13.5px;color:var(--muted);displa
       <li>Sunlight forecast from Open-Meteo for the wall's exact angle, refreshed each time the page opens.</li>
       <li>Assumes 80% system efficiency. Output can never exceed the inverter's 800 W.</li>
       <li>Each hour is the average power over that hour. These are estimates, roughly ±20–30%, until checked against real panel readings.</li>
-      <li>Earlier hours today also use real sunshine measured by weather satellites (Open-Meteo satellite data, usually 20 minutes to 2 hours behind). The panels are not fitted yet, so these are what the system would have made, not meter readings.</li>
+      <li>Once an hour has passed, its estimate is updated using sunshine measured by weather satellites (Open-Meteo, usually 20 minutes to 2 hours behind). It is still an estimate from web data, not a reading from the panels or inverter.</li>
       <li>In the picture, blue light is power from the panels to the inverter and green is power going into the house.</li>
     </ul>
   </details>
@@ -374,8 +374,8 @@ async function load(){
     if(S&&S.hourly) S.hourly.time.forEach((t,i)=>{const g=S.hourly.global_tilted_irradiance[i]; if(g==null) return;
       (SAT[t.slice(0,10)]=SAT[t.slice(0,10)]||{})[+t.slice(11,13)-1]=toW(g); SATTO=t.slice(11,16);}); }
   DATA.forEach(d=>{d.list=[];for(let s=lo;s<=hi;s++){const x=d.slots[s]||{w:0,m:0},sat=SAT[d.date]?SAT[d.date][s]:undefined;
-                   d.list.push({s,w:x.w,m:x.m,cc:x.cc,pr:x.pr||0,tc:x.tc,sky:sky(x.w,x.m),sat:sat==null?null:sat});}
-                   d.kwh=d.list.reduce((a,x)=>a+x.w,0)/1000;});
+                   d.list.push({s,w:x.w,m:x.m,cc:x.cc,pr:x.pr||0,tc:x.tc,sky:sky(x.w,x.m),sat:sat==null?null:sat,est:sat==null?x.w:sat});}
+                   d.kwh=d.list.reduce((a,x)=>a+x.est,0)/1000;});
   const nowD=new Date().toLocaleDateString('en-CA',{timeZone:'Europe/London'});
   const nowH=+new Date().toLocaleTimeString('en-GB',{timeZone:'Europe/London',hour:'2-digit',hour12:false});
   NOWSLOT=(DATA[0].date===nowD&&DATA[0].list.some(x=>x.s===nowH))?nowH:null;
@@ -413,17 +413,17 @@ function showDay(i){
   document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-selected',String(+b.dataset.day===i)));
   $('headline').textContent=`Estimated ${d.kwh.toFixed(1)} kWh ${i?'tomorrow':'today'}`;
   $('summary').innerHTML=`<span class="pill">${rate(d.kwh)}</span><span>${summaryText(d.list)}</span>`;
-  const best=d.list.reduce((a,b)=>b.w>a.w?b:a);
+  const best=d.list.reduce((a,b)=>b.est>a.est?b:a);
   $('sKwh').innerHTML=`${d.kwh.toFixed(1)} kWh<small>whole day</small>`;
-  $('sBest').innerHTML=best.w<20?'None<small>too dull</small>':`${slotShort(best.s)}<small>about ${Math.round(best.w)} W</small>`;
+  $('sBest').innerHTML=best.est<20?'None<small>too dull</small>':`${slotShort(best.s)}<small>about ${Math.round(best.est)} W</small>`;
   $('sWorthLbl').textContent=i?'Est. saving tomorrow':'Est. saving today';
   $('sWorth').innerHTML=`£${(d.kwh*SITE.price/100).toFixed(2)}<small>whole day</small>`;
   const n=d.list.length; $('scrub').max=n-1;
   $('ticks').innerHTML=`<span>${fmtH(d.list[0].s)}</span><span>${fmtH(d.list[Math.floor(n/2)].s)}</span><span>${fmtH(d.list[n-1].s+1)}</span>`;
   $('nowBtn').hidden=!(i===0&&NOWSLOT!=null);
   const done=d.list.filter(x=>x.sat!=null), sf=$('soFar');
-  if(i===0&&done.length){ const a=done.reduce((t,x)=>t+x.sat,0)/1000, f=done.reduce((t,x)=>t+x.w,0)/1000;
-    sf.hidden=false; sf.innerHTML=`<i></i><span>So far today from actual sunshine: <b>${a.toFixed(2)} kWh</b> (forecast for the same hours: ${f.toFixed(2)} kWh)</span>`; }
+  if(i===0&&done.length){ const a=done.reduce((t,x)=>t+x.est,0)/1000;
+    sf.hidden=false; sf.innerHTML=`<i></i><span>Estimated so far today: <b>${a.toFixed(2)} kWh</b> · past hours updated with satellite sunshine data from the web</span>`; }
   else sf.hidden=true;
   $('legend').hidden=!(i===0&&done.length);
   drawChart(d); drawRows(d); drawEq(d); showUpdated();
@@ -447,9 +447,9 @@ function drawChart(d){
   d.list.forEach((x,i)=>{
     const cx=L+band*i+band/2, bh=Math.max((H-T-B)*x.w/max,1.5);
     s+=`<rect class="bar" data-s="${x.s}" x="${(cx-bw/2).toFixed(1)}" y="${(H-B-bh).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="3"/>`;
-    s+=`<rect class="hit" data-s="${x.s}" x="${(cx-band/2).toFixed(1)}" y="${T}" width="${band.toFixed(1)}" height="${H-T}"><title>${slotText(x.s)}: about ${Math.round(x.w)} W</title></rect>`;
+    s+=`<rect class="hit" data-s="${x.s}" x="${(cx-band/2).toFixed(1)}" y="${T}" width="${band.toFixed(1)}" height="${H-T}"><title>${slotText(x.s)}: forecast about ${Math.round(x.w)} W</title></rect>`;
     if(x.sat!=null){ const ya=(H-B-Math.max((H-T-B)*x.sat/max,0)).toFixed(1);
-      s+=`<line class="act" x1="${(cx-bw/2-2).toFixed(1)}" x2="${(cx+bw/2+2).toFixed(1)}" y1="${ya}" y2="${ya}"><title>${slotText(x.s)}: about ${Math.round(x.sat)} W from actual sunshine</title></line>`; }
+      s+=`<line class="act" x1="${(cx-bw/2-2).toFixed(1)}" x2="${(cx+bw/2+2).toFixed(1)}" y1="${ya}" y2="${ya}"><title>${slotText(x.s)}: updated estimate about ${Math.round(x.sat)} W from satellite data</title></line>`; }
     if(i%2===0) s+=`<text class="ax" x="${cx.toFixed(1)}" y="${H-6}" text-anchor="middle">${fmtH(x.s)}</text>`;
   });
   if(curDay===0&&NOWSLOT!=null){
@@ -465,7 +465,7 @@ function drawRows(d){
   $('rows').innerHTML=d.list.map(x=>{const cond=condText(ccOf(x),x.pr||0,sunPos(d.date,x.s+.5).el<=0);
     return `<button class="row" type="button" data-s="${x.s}" aria-pressed="false"><span class="t">${slotShort(x.s)}</span>
       <span class="c">${icon(cond)}<span>${SHORT[cond]||cond}</span></span>
-      <span class="meter"><i style="width:${(x.w/SITE.inverterW*100).toFixed(1)}%"></i>${x.sat!=null?`<b class="mk" style="left:${(x.sat/SITE.inverterW*100).toFixed(1)}%" title="From actual sunshine"></b>`:''}</span><span class="w">${Math.round(x.w)} W${x.sat!=null?`<small>actual ${Math.round(x.sat)} W</small>`:''}</span></button>`;}).join('');
+      <span class="meter"><i style="width:${(x.est/SITE.inverterW*100).toFixed(1)}%"></i></span><span class="w">${Math.round(x.est)} W</span></button>`;}).join('');
   $('rows').querySelectorAll('.row').forEach(r=>r.addEventListener('click',()=>{stopPlay();select(+r.dataset.s);}));
 }
 
@@ -586,7 +586,7 @@ function rainTick(t){
 }
 
 function updateScene(x){
-  const hasSat=x.sat!=null, d=DATA[curDay],w=hasSat?x.sat:x.w,k=Math.min(w/SITE.inverterW,1),sp=sunPos(d.date,x.s+.5),up=sp.el>0,cc=ccOf(x),wet=wetOf(x);
+  const d=DATA[curDay],w=x.est,k=Math.min(w/SITE.inverterW,1),sp=sunPos(d.date,x.s+.5),up=sp.el>0,cc=ccOf(x),wet=wetOf(x);
   const v=pickVariant(x,sp,cc,wet), cond=condText(cc,x.pr||0,!up);
   document.querySelectorAll('#house .bgimg').forEach(im=>im.setAttribute('opacity',im.dataset.v===v?1:0));
   $('pglowG').setAttribute('opacity',w>=8?(.15+.85*k).toFixed(2):0);
@@ -599,9 +599,8 @@ function updateScene(x){
   $('chipWx').innerHTML=`${icon(cond)}${cond}${x.tc!=null?` · ${Math.round(x.tc)}°C`:''}`;
   $('estW').textContent=Math.round(w);
   const pence=w/1000*SITE.price;
-  $('estLbl').textContent=hasSat?'From actual sunshine (satellite)':'Estimated solar power';
   const worth=`worth about ${pence<10?pence.toFixed(1):Math.round(pence)}p this hour`;
-  $('estSub').textContent=hasSat?`Forecast said ${Math.round(x.w)} W · ${worth}`:(w<8?'Too dark for the panels to make power.':`Going into the house · ${worth}`);
+  $('estSub').textContent=(w<8?'Too dark for the panels to make power.':`Going into the house · ${worth}`);
   drawSun(x,sp,up);
 }
 
