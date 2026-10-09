@@ -96,10 +96,14 @@ h1{font-size:28px;font-weight:700;line-height:1.15;letter-spacing:-.02em;text-wr
 .ov-bottom .sub{font-size:13.5px;opacity:.88;margin-top:4px}
 
 /* scrubber */
-.scrub{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px}
+.scrub{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:14px}
 .iconbtn{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center;cursor:pointer}
 .iconbtn svg{width:16px;height:16px;fill:var(--ink)}
-.nowbtn{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 13px;font-size:13px;font-weight:600;cursor:pointer}
+.nowbtn{display:inline-flex;align-items:center;gap:8px;min-width:118px;justify-content:center;border:0;background:var(--accent);color:var(--surface);border-radius:999px;padding:0 22px;height:48px;font:700 17px var(--display);letter-spacing:.02em;cursor:pointer;box-shadow:0 4px 14px rgba(22,163,74,.35)}
+.nowbtn::before{content:'';width:9px;height:9px;border-radius:50%;background:currentColor;animation:nowpulse 1.6s ease-in-out infinite}
+.nowbtn[aria-pressed="true"]{box-shadow:0 0 0 3px var(--accent-soft),0 4px 14px rgba(22,163,74,.35)}
+@keyframes nowpulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.nowbtn::before{animation:none}}
 .track{min-width:0}
 .track input{-webkit-appearance:none;appearance:none;width:100%;height:6px;border-radius:99px;background:linear-gradient(90deg,var(--accent) var(--p,0%),var(--line) var(--p,0%));outline-offset:6px;cursor:pointer}
 .track input::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--surface);border:2px solid var(--accent);box-shadow:0 2px 6px rgba(0,0,0,.18)}
@@ -405,8 +409,12 @@ async function load(){
     DATA=SAMPLE.days.map(d=>{const slots={};d.w.forEach((w,i)=>slots[d.h0+i]={w,m:d.m[i]});return {date:d.date,slots};});
     live=false;
   }
-  let lo=8,hi=17;
-  DATA.forEach(d=>{for(const s in d.slots)if(d.slots[s].w>=3){lo=Math.min(lo,+s);hi=Math.max(hi,+s);}});
+  // hours shown: from the hour the sun rises in to the hour it sets in (earliest/latest of the two days),
+  // widened for any hour the forecast still gives power
+  let lo=24,hi=-1;
+  DATA.forEach(d=>{const t=sunTimes(d.date);if(t.rise!=null)lo=Math.min(lo,Math.floor(t.rise/60));if(t.set!=null)hi=Math.max(hi,Math.floor((t.set-1)/60));
+                   for(const s in d.slots)if(d.slots[s].w>=3){lo=Math.min(lo,+s);hi=Math.max(hi,+s);}});
+  if(hi<lo){lo=8;hi=17;}
   if(live){ const S=await satP; SAT={}; SATTO=null;
     if(S&&S.hourly){ const H=S.hourly; H.time.forEach((t,i)=>{const g=H.global_tilted_irradiance[i]; if(g==null) return;
       (SAT[t.slice(0,10)]=SAT[t.slice(0,10)]||{})[+t.slice(11,13)-1]={w:toW(g),sky:satSky(H.shortwave_radiation[i],H.direct_radiation[i],H.terrestrial_radiation[i])};
@@ -464,7 +472,7 @@ function showDay(i){
   $('sWorth').innerHTML=`£${(d.kwh*SITE.price/100).toFixed(2)}<small>whole day</small>`;
   const n=d.list.length; $('scrub').max=n-1;
   $('ticks').innerHTML=`<span>${fmtH(d.list[0].s)}</span><span>${fmtH(d.list[Math.floor(n/2)].s)}</span><span>${fmtH(d.list[n-1].s+1)}</span>`;
-  $('nowBtn').hidden=!(i===0&&NOWSLOT!=null);
+  $('nowBtn').hidden=NOWSLOT==null;
   const done=d.list.filter(x=>x.sat!=null), sf=$('soFar');
   if(i===0&&done.length){ const a=done.reduce((t,x)=>t+x.est,0)/1000;
     sf.hidden=false; sf.innerHTML=`<i></i><span>Estimated so far today: <b>${a.toFixed(2)} kWh</b> · past hours updated with satellite sunshine data from the web</span>`; }
@@ -480,6 +488,7 @@ function select(s){
   const sc=$('scrub'); sc.value=idx; sc.style.setProperty('--p',(idx/(d.list.length-1)*100)+'%');
   document.querySelectorAll('#chart .bar').forEach(b=>b.classList.toggle('sel',+b.dataset.s===s));
   document.querySelectorAll('.row').forEach(r=>{const on=+r.dataset.s===s;r.classList.toggle('sel',on);r.setAttribute('aria-pressed',String(on));});
+  $('nowBtn').setAttribute('aria-pressed',String(curDay===0&&s===NOWSLOT));
   updateScene(x);
 }
 
