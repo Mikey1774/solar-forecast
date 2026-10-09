@@ -259,6 +259,7 @@ details.panel ul{margin:10px 0 0 18px;font-size:13.5px;color:var(--muted);displa
       <li>Assumes 80% system efficiency. Output can never exceed the inverter's 800 W.</li>
       <li>Each hour is the average power over that hour. These are estimates, roughly ±20–30%, until checked against real panel readings.</li>
       <li>Once an hour has passed, its estimate is updated using sunshine measured by weather satellites (Open-Meteo, usually 20 minutes to 2 hours behind). It is still an estimate from web data, not a reading from the panels or inverter.</li>
+      <li>For hours that have passed, the picture and weather words also follow the satellite: how clear the sky was and how much sunshine came straight from the sun. Rain and temperature still come from the weather model, as satellites can't measure them.</li>
       <li>In the picture, blue light is power from the panels to the inverter and green is power going into the house.</li>
     </ul>
   </details>
@@ -306,7 +307,19 @@ const slotShort=s=>{const a=fmtH(s),b=fmtH(s+1);return a.slice(-2)===b.slice(-2)
 const SHORT={'Clear sky':'Clear','Clear night':'Clear','Mostly sunny':'Sunny','Mostly clear':'Clear','Partly cloudy':'Mixed','Mostly cloudy':'Cloudy','Overcast':'Overcast','Rain':'Rain','Heavy rain':'Heavy rain','Sun and showers':'Showers'};
 const sky=(w,m)=>m>=45?'Sunny':m>=15?'Bright':(w>=100?'Cloudy':'Overcast');
 const ccOf=x=>x.cc!=null?x.cc:({Sunny:5,Bright:35,Cloudy:75,Overcast:100}[x.sky]);
-const wetOf=x=>(x.pr||0)>=0.1&&ccOf(x)>=40;
+// measured sky from satellite: clearness kt = ground sunshine / top-of-atmosphere, beam = share arriving as direct sun
+function satSky(ghi,dir,toa){
+  if(ghi==null||!toa||toa<80) return null;            // too low a sun to judge reliably: fall back to the forecast
+  const kt=ghi/toa, beam=ghi>0?(dir||0)/ghi:0;
+  return beam>=.55?{c:'sun',beam}:beam>=.25?{c:'spells',beam}:kt>=.3?{c:'cloud',beam}:{c:'grey',beam};
+}
+// rain is still from the forecast (satellites can't see it), but only kept when the satellite shows real cloud
+const wetOf=x=>(x.pr||0)>=0.1&&(x.ssky?(x.ssky.c==='cloud'||x.ssky.c==='grey'):ccOf(x)>=40);
+function condFor(x,night){
+  if(!x.ssky) return condText(ccOf(x),x.pr||0,night);
+  if(wetOf(x)) return x.pr>=2?'Heavy rain':'Rain';
+  return {sun:x.ssky.beam>=.7?'Clear sky':'Mostly sunny',spells:'Partly cloudy',cloud:'Mostly cloudy',grey:'Overcast'}[x.ssky.c];
+}
 function condText(cc,pr,night){
   if(pr>=2) return 'Heavy rain'; if(pr>=0.1) return cc<40?'Sun and showers':'Rain';
   if(cc<15) return night?'Clear night':'Clear sky'; if(cc<40) return night?'Mostly clear':'Mostly sunny';
@@ -362,7 +375,7 @@ async function load(){
     `&tilt=${SITE.tilt}&azimuth=${SITE.azimuth}&timezone=Europe%2FLondon&forecast_days=2`;
   // real sunshine so far today, measured by satellite (hourly averages, same convention as the forecast)
   const satUrl=`https://satellite-api.open-meteo.com/v1/archive?latitude=${SITE.lat}&longitude=${SITE.lon}`+
-    `&hourly=global_tilted_irradiance&tilt=${SITE.tilt}&azimuth=${SITE.azimuth}&models=satellite_radiation_seamless&timezone=Europe%2FLondon&past_days=0&forecast_days=1`;
+    `&hourly=global_tilted_irradiance,shortwave_radiation,direct_radiation,terrestrial_radiation&tilt=${SITE.tilt}&azimuth=${SITE.azimuth}&models=satellite_radiation_seamless&timezone=Europe%2FLondon&past_days=0&forecast_days=1`;
   const satP=fetch(satUrl,{cache:'no-store'}).then(r=>r.ok?r.json():null).catch(()=>null);
   try{
     let r=await fetch(url,{cache:'no-store'}).catch(()=>null);
@@ -388,10 +401,11 @@ async function load(){
   let lo=8,hi=17;
   DATA.forEach(d=>{for(const s in d.slots)if(d.slots[s].w>=3){lo=Math.min(lo,+s);hi=Math.max(hi,+s);}});
   if(live){ const S=await satP; SAT={}; SATTO=null;
-    if(S&&S.hourly) S.hourly.time.forEach((t,i)=>{const g=S.hourly.global_tilted_irradiance[i]; if(g==null) return;
-      (SAT[t.slice(0,10)]=SAT[t.slice(0,10)]||{})[+t.slice(11,13)-1]=toW(g); SATTO=t.slice(11,16);}); }
-  DATA.forEach(d=>{d.list=[];for(let s=lo;s<=hi;s++){const x=d.slots[s]||{w:0,m:0},sat=SAT[d.date]?SAT[d.date][s]:undefined;
-                   d.list.push({s,w:x.w,m:x.m,cc:x.cc,pr:x.pr||0,tc:x.tc,sky:sky(x.w,x.m),sat:sat==null?null:sat,est:sat==null?x.w:sat});}
+    if(S&&S.hourly){ const H=S.hourly; H.time.forEach((t,i)=>{const g=H.global_tilted_irradiance[i]; if(g==null) return;
+      (SAT[t.slice(0,10)]=SAT[t.slice(0,10)]||{})[+t.slice(11,13)-1]={w:toW(g),sky:satSky(H.shortwave_radiation[i],H.direct_radiation[i],H.terrestrial_radiation[i])};
+      SATTO=t.slice(11,16);}); } }
+  DATA.forEach(d=>{d.list=[];for(let s=lo;s<=hi;s++){const x=d.slots[s]||{w:0,m:0},sv=SAT[d.date]?SAT[d.date][s]:undefined;
+                   d.list.push({s,w:x.w,m:x.m,cc:x.cc,pr:x.pr||0,tc:x.tc,sky:sky(x.w,x.m),sat:sv?sv.w:null,est:sv?sv.w:x.w,ssky:sv?sv.sky:null});}
                    d.kwh=d.list.reduce((a,x)=>a+x.est,0)/1000;});
   const nowD=new Date().toLocaleDateString('en-CA',{timeZone:'Europe/London'});
   const nowH=+new Date().toLocaleTimeString('en-GB',{timeZone:'Europe/London',hour:'2-digit',hour12:false});
@@ -483,7 +497,7 @@ function drawChart(d){
 }
 
 function drawRows(d){
-  $('rows').innerHTML=d.list.map(x=>{const cond=condText(ccOf(x),x.pr||0,sunPos(d.date,x.s+.5).el<=0);
+  $('rows').innerHTML=d.list.map(x=>{const cond=condFor(x,sunPos(d.date,x.s+.5).el<=0);
     return `<button class="row" type="button" data-s="${x.s}" aria-pressed="false"><span class="t">${slotShort(x.s)}</span>
       <span class="c">${icon(cond)}<span>${SHORT[cond]||cond}</span></span>
       <span class="meter"><i style="width:${(x.est/SITE.inverterW*100).toFixed(1)}%"></i></span><span class="w">${Math.round(x.est)} W</span></button>`;}).join('');
@@ -526,7 +540,7 @@ function drawSun(x,sp,up){
       ${tx(160,106,clock(NOON.m),'middle',big.replace('var(--ink)','var(--sun)'))}${tx(160,121,'Sun highest','middle',small)}
     </svg>
     <div class="sunkey"><span><i></i>Sun highest (${Math.round(NOON.el)}°), not always the most power</span>${TOP3.map((h,k)=>`<span><b class="rk rk${k+1}">${k+1}</b>${slotShort(h.s)}</span>`).join('')}</div>
-    <p class="suncap">${up?`At ${slotText(x.s)} the sun is <b>${Math.round(sp.el)}°</b> high in the ${compass(sp.az)}, with <b>${x.m} of 60</b> minutes of direct sun.`:'The sun is below the horizon.'}</p>`;
+    <p class="suncap">${up?`At ${slotText(x.s)} the sun is <b>${Math.round(sp.el)}°</b> high in the ${compass(sp.az)}, ${x.ssky?`with <b>${x.ssky.beam>=.55?'strong':x.ssky.beam>=.25?'some':'little or no'}</b> direct sun measured by satellite.`:`with <b>${x.m} of 60</b> minutes of direct sun forecast.`}`:'The sun is below the horizon.'}</p>`;
 }
 
 /* ===== Rendered scene: one picture per weather, live layers on top =====
@@ -579,6 +593,9 @@ function flowFor(w){
 function pickVariant(x,sp,cc,wet){
   if(sp.el<=0) return 'night';
   if(wet) return 'rain';
+  if(x.ssky){ const c=x.ssky.c;
+    if(c==='sun'){if(sp.el<12&&sp.az>200)return 'sunset';if(sp.el<15&&sp.az<160)return 'morning';return 'sunny';}
+    return c==='spells'?((sp.el<8&&sp.az>200)?'sunset':'bright'):c==='cloud'?'cloudy':'overcast'; }
   if(x.m>=45){if(sp.el<12&&sp.az>200)return 'sunset';if(sp.el<15&&sp.az<160)return 'morning';return cc<30?'sunny':'bright';}
   if(x.m>=15) return (sp.el<8&&sp.az>200)?'sunset':'bright';
   return cc>=90?'overcast':'cloudy';
@@ -618,7 +635,7 @@ function rainTick(t){
 
 function updateScene(x){
   const d=DATA[curDay],w=x.est,k=Math.min(w/SITE.inverterW,1),sp=sunPos(d.date,x.s+.5),up=sp.el>0,cc=ccOf(x),wet=wetOf(x);
-  const v=pickVariant(x,sp,cc,wet), cond=condText(cc,x.pr||0,!up);
+  const v=pickVariant(x,sp,cc,wet), cond=condFor(x,!up);
   document.querySelectorAll('#house .bgimg').forEach(im=>im.setAttribute('opacity',im.dataset.v===v?1:0));
   $('pglowG').setAttribute('opacity',w>=8?(.15+.85*k).toFixed(2):0);
   $('sheenR').setAttribute('opacity',(w>=8?.15+.5*k:0).toFixed(2));
