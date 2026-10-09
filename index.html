@@ -96,6 +96,9 @@ h1{font-size:28px;font-weight:700;line-height:1.15;letter-spacing:-.02em;text-wr
 .stats{display:grid;grid-template-columns:repeat(3,1fr);background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
 .stats div{padding:14px 12px;min-width:0}
 .stats div+div{border-left:1px solid var(--line)}
+.stats .upd{grid-column:1/-1;border-top:1px solid var(--line);padding:9px 12px;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:7px}
+.stats .upd i{width:6px;height:6px;border-radius:50%;background:var(--accent);flex:none}
+.stats .upd.off i{background:var(--muted)}
 .stats dt{min-height:2.6em;line-height:1.3;font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .stats dd{font-family:var(--display);font-size:20px;white-space:nowrap;font-weight:700;margin-top:4px;line-height:1.1;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 .stats dd small{display:block;white-space:normal;font-family:var(--body);font-size:11.5px;font-weight:500;color:var(--muted);letter-spacing:0;margin-top:3px}
@@ -198,6 +201,7 @@ details.panel ul{margin:10px 0 0 18px;font-size:13.5px;color:var(--muted);displa
     <div><dt>Est. solar generated</dt><dd id="sKwh">–</dd></div>
     <div><dt id="sWorthLbl">Est. saving today</dt><dd id="sWorth">–</dd></div>
     <div><dt>Best hour</dt><dd id="sBest">–</dd></div>
+    <p class="upd" id="updated" aria-live="polite">Fetching live weather and solar data…</p>
   </dl>
 
   <section class="panel" id="sunPanel" aria-label="Sun position"></section>
@@ -292,7 +296,8 @@ function icon(cond){
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[k]}</svg>`;
 }
 
-let DATA=null,curDay=0,selSlot=null,live=true,NOWSLOT=null,NOWWX=null,APISUN={};
+let DATA=null,curDay=0,selSlot=null,live=true,NOWSLOT=null,NOWWX=null,APISUN={},LAST=null,loaded=false;
+const REFRESH_MIN=30;
 
 /* ===== Sun maths (NOAA approximation) ===== */
 const D2R=Math.PI/180;
@@ -328,7 +333,7 @@ async function load(){
     if(!r||!r.ok){ await new Promise(ok=>setTimeout(ok,1200)); r=await fetch(url,{cache:'no-store'}); }   // the free API sometimes returns a one-off 503
     if(!r.ok) throw new Error('Forecast request failed: '+r.status);
     const J=await r.json(),h=J.hourly,byDay={};
-    NOWWX=J.current||null;
+    NOWWX=J.current||null; LAST=new Date();
     ((J.daily&&J.daily.time)||[]).forEach((d,i)=>{const hm=t=>+t.slice(11,13)*60+ +t.slice(14,16);APISUN[d]={rise:hm(J.daily.sunrise[i]),set:hm(J.daily.sunset[i])};});
     h.time.forEach((t,i)=>{
       const d=t.slice(0,10),H=+t.slice(11,13);
@@ -340,6 +345,7 @@ async function load(){
     live=true;
   }catch(e){
     console.warn(e);
+    if(loaded&&LAST){showUpdated();return;}   // a failed background refresh keeps the last good forecast
     DATA=SAMPLE.days.map(d=>{const slots={};d.w.forEach((w,i)=>slots[d.h0+i]={w,m:d.m[i]});return {date:d.date,slots};});
     live=false;
   }
@@ -354,7 +360,17 @@ async function load(){
   $('dot').className='dot'+(live?'':' off');
   $('statusTxt').textContent=!live?'Sample data':NOWWX?`${Math.round(NOWWX.temperature_2m)}°C · ${condText(NOWWX.cloud_cover,NOWWX.precipitation||0,false).toLowerCase()}`:'Live';
   $('t0k').textContent=DATA[0].kwh.toFixed(1)+' kWh'; $('t1k').textContent=DATA[1].kwh.toFixed(1)+' kWh';
-  showDay(0);
+  if(loaded){const cd=curDay,ss=selSlot;showDay(cd);if(DATA[cd].list.some(x=>x.s===ss))select(ss);} else showDay(0);
+  loaded=true; showUpdated();
+}
+
+function showUpdated(){
+  const el=$('updated');
+  if(!LAST){el.className='upd off';el.innerHTML='<i></i>Live data unavailable, showing sample figures.';return;}
+  const mins=Math.round((Date.now()-LAST)/60000), t=LAST.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  const ago=mins<1?'just now':mins===1?'1 min ago':mins<60?mins+' mins ago':'over an hour ago';
+  el.className='upd'+(live?'':' off');
+  el.innerHTML=`<i></i>Weather and solar data updated ${t} (${ago}) · refreshes every ${REFRESH_MIN} mins`;
 }
 
 function rate(k){ if(k<0.8)return 'Very dull day'; if(k<1.8)return 'Dull day'; if(k<2.8)return 'Fair day'; if(k<3.8)return 'Good day'; return 'Great day'; }
@@ -572,6 +588,9 @@ document.querySelectorAll('.seg button').forEach(b=>b.addEventListener('click',(
 
 buildScene();
 load();
+setInterval(showUpdated,60000);
+setInterval(()=>{if(!document.hidden)load();},REFRESH_MIN*60000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&(!LAST||Date.now()-LAST>REFRESH_MIN*60000))load();else showUpdated();});
 </script>
 </body>
 </html>
