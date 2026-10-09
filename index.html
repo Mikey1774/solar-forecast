@@ -479,7 +479,7 @@ function showDay(i){
   else sf.hidden=true;
   $('legend').hidden=!(i===0&&done.length);
   drawChart(d); drawRows(d); drawEq(d); showUpdated();
-  select(i===0&&NOWSLOT!=null?NOWSLOT:best.s);
+  select(i===0&&NOWSLOT!=null?NOWSLOT:d.list[0].s);   // today opens on now, tomorrow on its first hour
 }
 
 function select(s){
