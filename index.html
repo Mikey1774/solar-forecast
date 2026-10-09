@@ -85,7 +85,7 @@ h1{font-size:28px;font-weight:700;line-height:1.15;letter-spacing:-.02em;text-wr
 @keyframes pulse{from{opacity:.45}to{opacity:1}}
 .led{animation:blink 1.4s ease-in-out infinite}
 @keyframes blink{50%{opacity:.3}}
-.ov-top{position:absolute;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;gap:8px;pointer-events:none}
+.ov-top{position:absolute;top:12px;left:12px;right:12px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;pointer-events:none}
 .chip{display:inline-flex;align-items:center;gap:6px;color:var(--on-image);background:var(--chip);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);font-size:12.5px;font-weight:600;padding:6px 10px;border-radius:999px;white-space:nowrap}
 .chip svg{width:15px;height:15px}
 .ov-bottom{position:absolute;left:0;right:0;bottom:0;padding:44px 16px 14px;color:var(--on-image);background:linear-gradient(to top,var(--scrim) 0%,var(--scrim) 35%,transparent 100%);pointer-events:none}
@@ -341,7 +341,7 @@ function icon(cond){
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[k]}</svg>`;
 }
 
-let DATA=null,curDay=0,selSlot=null,live=true,NOWSLOT=null,NOWWX=null,APISUN={},LAST=null,loaded=false;
+let DATA=null,curDay=0,selSlot=null,live=true,NOWSLOT=null,NOWX=null,NOWWX=null,APISUN={},LAST=null,loaded=false;
 const REFRESH_MIN=30;
 
 /* ===== Sun maths (NOAA approximation) ===== */
@@ -372,7 +372,10 @@ const toW=g=>Math.min(Math.max(g||0,0)*SITE.watts/1000*SITE.perfRatio,SITE.inver
 let SAT={},SATTO=null,TOP3=[],NOON=null;
 // minute of the day when the sun is highest (solar noon), to the nearest minute
 function solarNoon(dateStr){let best=0,bm=720;for(let m=600;m<=900;m++){const e=sunPos(dateStr,m/60).el;if(e>best){best=e;bm=m;}}return {m:bm,el:best};}
+const londonNow=()=>{const n=new Date();return {d:n.toLocaleDateString('en-CA',{timeZone:'Europe/London'}),h:+n.toLocaleTimeString('en-GB',{timeZone:'Europe/London',hour:'2-digit',hour12:false})};};
+const dayName=ds=>new Date(ds+'T12:00:00Z').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',timeZone:'UTC'});
 async function load(){
+  const wasNow=curDay===0&&selSlot!=null&&selSlot===NOWSLOT;
   const url=`https://api.open-meteo.com/v1/forecast?latitude=${SITE.lat}&longitude=${SITE.lon}`+
     `&daily=sunrise,sunset&current=temperature_2m,cloud_cover,precipitation,wind_speed_10m&wind_speed_unit=mph`+
     `&hourly=global_tilted_irradiance,sunshine_duration,cloud_cover,precipitation,temperature_2m`+
@@ -411,21 +414,23 @@ async function load(){
   DATA.forEach(d=>{d.list=[];for(let s=lo;s<=hi;s++){const x=d.slots[s]||{w:0,m:0},sv=SAT[d.date]?SAT[d.date][s]:undefined;
                    d.list.push({s,w:x.w,m:x.m,cc:x.cc,pr:x.pr||0,tc:x.tc,sky:sky(x.w,x.m),sat:sv?sv.w:null,est:sv?sv.w:x.w,ssky:sv?sv.sky:null});}
                    d.kwh=d.list.reduce((a,x)=>a+x.est,0)/1000;});
-  const nowD=new Date().toLocaleDateString('en-CA',{timeZone:'Europe/London'});
-  const nowH=+new Date().toLocaleTimeString('en-GB',{timeZone:'Europe/London',hour:'2-digit',hour12:false});
-  NOWSLOT=(DATA[0].date===nowD&&DATA[0].list.some(x=>x.s===nowH))?nowH:null;
+  const {d:nowD,h:nowH}=londonNow();
+  NOWSLOT=null; NOWX=null;
+  // outside the daylight hours in the list (evening, night, early morning) "now" is still shown, as a dark hour
+  if(DATA[0].date===nowD){ NOWSLOT=nowH; const y=DATA[0].slots[nowH]||{};
+    NOWX=DATA[0].list.find(x=>x.s===nowH)||{s:nowH,w:y.w||0,m:y.m||0,cc:y.cc,pr:y.pr||0,tc:y.tc,sky:sky(y.w||0,y.m||0),sat:null,est:y.w||0,ssky:null}; }
 
   $('dot').className='dot'+(live?'':' off');
   $('statusTxt').textContent=!live?'Sample data':NOWWX?`${Math.round(NOWWX.temperature_2m)}°C · ${condText(NOWWX.cloud_cover,NOWWX.precipitation||0,false).toLowerCase()}`:'Live';
   $('t0k').textContent=DATA[0].kwh.toFixed(1)+' kWh'; $('t1k').textContent=DATA[1].kwh.toFixed(1)+' kWh';
-  if(loaded){const cd=curDay,ss=selSlot;showDay(cd);if(DATA[cd].list.some(x=>x.s===ss))select(ss);} else showDay(0);
+  if(loaded){const cd=curDay,ss=selSlot;showDay(cd);if(!wasNow&&DATA[cd].list.some(x=>x.s===ss))select(ss);} else showDay(0);
   loaded=true; showUpdated();
 }
 
 function showUpdated(){
   const el=$('updated');
   if(!LAST){el.className='upd off';el.innerHTML='<i></i>Live data unavailable, showing sample figures.';return;}
-  const mins=Math.round((Date.now()-LAST)/60000), t=LAST.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  const mins=Math.round((Date.now()-LAST)/60000), t=LAST.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/London'});
   const ago=mins<1?'just now':mins===1?'1 min ago':mins<60?mins+' mins ago':'over an hour ago';
   el.className='upd'+(live?'':' off');
   el.innerHTML=`<i></i>Updated ${t} (${ago})${SATTO&&curDay===0?` · satellite sunshine up to ${SATTO}`:''} · refreshes every ${REFRESH_MIN} mins`;
@@ -470,7 +475,8 @@ function showDay(i){
 }
 
 function select(s){
-  selSlot=s; const d=DATA[curDay], idx=d.list.findIndex(x=>x.s===s), x=d.list[idx];
+  selSlot=s; const d=DATA[curDay]; let idx=d.list.findIndex(x=>x.s===s), x=d.list[idx];
+  if(!x&&curDay===0&&NOWX&&s===NOWX.s){x=NOWX;idx=s<d.list[0].s?0:d.list.length-1;}
   const sc=$('scrub'); sc.value=idx; sc.style.setProperty('--p',(idx/(d.list.length-1)*100)+'%');
   document.querySelectorAll('#chart .bar').forEach(b=>b.classList.toggle('sel',+b.dataset.s===s));
   document.querySelectorAll('.row').forEach(r=>{const on=+r.dataset.s===s;r.classList.toggle('sel',on);r.setAttribute('aria-pressed',String(on));});
@@ -647,7 +653,7 @@ function updateScene(x){
   $('entryG').setAttribute('opacity',w>=8?(.25+.6*k).toFixed(2):0);
   $('led').setAttribute('fill',w>=8?'#3dff8a':'#ff5a5f');
   setRain(wet?Math.min(.35+(x.pr||0)*.4,1):0);
-  $('chipTime').textContent=`${curDay?'Tomorrow':'Today'} · ${slotShort(x.s)}${curDay===0&&x.s===NOWSLOT?' · now':''}`;
+  $('chipTime').textContent=`${curDay?'Tomorrow':'Today'}, ${dayName(d.date)} · ${slotShort(x.s)}${curDay===0&&x.s===NOWSLOT?' · now':''}`;
   $('chipWx').innerHTML=`${icon(cond)}${cond}${x.tc!=null?` · ${Math.round(x.tc)}°C`:''}`;
   $('estW').textContent=Math.round(w);
   const pence=w/1000*SITE.price;
@@ -671,7 +677,8 @@ document.querySelectorAll('.seg button').forEach(b=>b.addEventListener('click',(
 
 buildScene();
 load();
-setInterval(showUpdated,60000);
+// every minute: refresh the 'updated' line, and move on when the hour or the day changes
+setInterval(()=>{showUpdated();if(!loaded||document.hidden)return;const n=londonNow();if(n.d!==DATA[0].date||n.h!==NOWSLOT)load();},60000);
 setInterval(()=>{if(!document.hidden)load();},REFRESH_MIN*60000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&(!LAST||Date.now()-LAST>REFRESH_MIN*60000))load();else showUpdated();});
 </script>
