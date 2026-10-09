@@ -509,7 +509,7 @@ function drawSun(x,sp,up){
   const at=m=>{const f=Math.max(0,Math.min(1,(m-t.rise)/span));return [20+280*f, 86-288*f*(1-f), f];};
   const [px,py,f]=at((x.s+.5)*60), [nx,ny]=at(NOON.m);
   const marks=TOP3.map((h,k)=>{const [hx,hy]=at((h.s+.5)*60);
-    return `<line x1="${hx.toFixed(1)}" x2="${hx.toFixed(1)}" y1="86" y2="${(hy+8).toFixed(1)}" stroke="var(--r${k+1})" stroke-width="1.8" stroke-dasharray="3 3"/>
+    return `<line x1="160" y1="86" x2="${hx.toFixed(1)}" y2="${hy.toFixed(1)}" stroke="var(--r${k+1})" stroke-width="1.8" stroke-dasharray="3 3"/>
       <circle cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="8.5" fill="var(--r${k+1})" stroke="var(--surface)" stroke-width="1.5"/>
       <text x="${hx.toFixed(1)}" y="${(hy+3.8).toFixed(1)}" text-anchor="middle" style="font:700 10.5px var(--display);fill:var(--r-ink)">${k+1}</text>`;}).join('');
   const tx=(x,y,txt,anchor,style)=>`<text x="${x}" y="${y}" text-anchor="${anchor}" style="${style}">${txt}</text>`;
@@ -518,12 +518,12 @@ function drawSun(x,sp,up){
       <line x1="6" x2="314" y1="86" y2="86" stroke="var(--line)" stroke-width="1.5"/>
       <path d="M20 86 Q160 -58 300 86" fill="none" stroke="var(--line)" stroke-width="3" stroke-linecap="round"/>
       <path d="M20 86 Q160 -58 300 86" fill="none" stroke="var(--sun)" stroke-width="3" stroke-linecap="round" pathLength="1" stroke-dasharray="${f.toFixed(3)} 2"/>
-      <line x1="${nx.toFixed(1)}" x2="${nx.toFixed(1)}" y1="90" y2="${ny.toFixed(1)}" stroke="var(--sun)" stroke-width="1.8" stroke-dasharray="3 3"/>
+      <line x1="160" y1="86" x2="${nx.toFixed(1)}" y2="${ny.toFixed(1)}" stroke="var(--sun)" stroke-width="1.8" stroke-dasharray="3 3"/>
       ${up?`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="13" fill="var(--sun)" opacity=".2"/><circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="6.5" fill="var(--sun)" stroke="var(--surface)" stroke-width="1.5"/>`:''}
       ${marks}
       ${tx(20,106,clock(t.rise),'start',big)}${tx(20,121,'Sunrise','start',small)}
       ${tx(300,106,clock(t.set),'end',big)}${tx(300,121,'Sunset','end',small)}
-      ${tx(nx.toFixed(1),106,clock(NOON.m),'middle',big.replace('var(--ink)','var(--sun)'))}${tx(nx.toFixed(1),121,'Sun highest','middle',small)}
+      ${tx(160,106,clock(NOON.m),'middle',big.replace('var(--ink)','var(--sun)'))}${tx(160,121,'Sun highest','middle',small)}
     </svg>
     <div class="sunkey"><span><i></i>Sun highest (${Math.round(NOON.el)}°), not always the most power</span>${TOP3.map((h,k)=>`<span><b class="rk rk${k+1}">${k+1}</b>${slotShort(h.s)}</span>`).join('')}</div>
     <p class="suncap">${up?`At ${slotText(x.s)} the sun is <b>${Math.round(sp.el)}°</b> high in the ${compass(sp.az)}, with <b>${x.m} of 60</b> minutes of direct sun.`:'The sun is below the horizon.'}</p>`;
