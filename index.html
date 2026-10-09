@@ -12,7 +12,7 @@
 :root{
   --bg:#f2f4f7; --surface:#ffffff; --ink:#151a22; --muted:#5d6675; --line:#e2e6ec;
   --accent:#16a34a; --accent-soft:#a7dfbc; --accent-wash:#e7f6ec; --sun:#e0860b;
-  --r1:#11743a; --r2:#22a35a; --r3:#6cc58f; --r-ink:#ffffff;
+  --r1:#1ff26b; --r2:#5cc488; --r3:#a7cfb6; --r-ink:#06240f; --r1-glow:rgba(31,242,107,.55);
   --on-image:#ffffff; --scrim:rgba(10,14,22,.62); --chip:rgba(12,16,24,.48);
   --display:'Archivo',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
   --body:'Public Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;
@@ -67,7 +67,7 @@ h1{font-size:28px;font-weight:700;line-height:1.15;letter-spacing:-.02em;text-wr
 .top3 .tm{font-family:var(--display);font-weight:700;font-size:14.5px;white-space:nowrap;font-variant-numeric:tabular-nums}
 .top3 .wt{white-space:nowrap;font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
 .top3 .none{grid-column:1/-1;font-size:13.5px;color:var(--muted);padding-inline:2px}
-.rk1{background:var(--r1)}.rk2{background:var(--r2)}.rk3{background:var(--r3)}
+.rk1{background:var(--r1);box-shadow:0 0 0 3px rgba(31,242,107,.18),0 0 12px var(--r1-glow)}.rk2{background:var(--r2)}.rk3{background:var(--r3)}
 .sunkey{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 14px;margin-top:6px;font-size:12px;color:var(--muted)}
 .sunkey span{display:inline-flex;align-items:center;gap:6px}
 .sunkey i{display:inline-block;width:14px;border-top:2px dashed var(--sun)}
@@ -510,7 +510,7 @@ function drawSun(x,sp,up){
   const [px,py,f]=at((x.s+.5)*60), [nx,ny]=at(NOON.m);
   const marks=TOP3.map((h,k)=>{const [hx,hy]=at((h.s+.5)*60);
     return `<line x1="160" y1="86" x2="${hx.toFixed(1)}" y2="${hy.toFixed(1)}" stroke="var(--r${k+1})" stroke-width="1.8" stroke-dasharray="3 3"/>
-      <circle cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="8.5" fill="var(--r${k+1})" stroke="var(--surface)" stroke-width="1.5"/>
+      ${k===0?`<circle cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="13" fill="var(--r1)" opacity=".28"/>`:''}<circle cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="8.5" fill="var(--r${k+1})" stroke="var(--surface)" stroke-width="1.5"/>
       <text x="${hx.toFixed(1)}" y="${(hy+3.8).toFixed(1)}" text-anchor="middle" style="font:700 10.5px var(--display);fill:var(--r-ink)">${k+1}</text>`;}).join('');
   const tx=(x,y,txt,anchor,style)=>`<text x="${x}" y="${y}" text-anchor="${anchor}" style="${style}">${txt}</text>`;
   const big='font:700 15px var(--display);fill:var(--ink)', small='font:500 11px var(--body);fill:var(--muted)';
