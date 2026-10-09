@@ -182,7 +182,8 @@ details.panel summary::-webkit-details-marker{display:none}
 details.panel summary:after{content:"+";color:var(--muted);font-weight:500}
 details.panel[open] summary:after{content:"–"}
 details.panel ul{margin:10px 0 0 18px;font-size:13.5px;color:var(--muted);display:grid;gap:4px}
-.foot{font-size:12px;color:var(--muted);text-align:center}
+.foot{font-size:12px;line-height:1.7;color:var(--muted);text-align:center}
+.foot a{color:inherit;text-decoration:underline;text-underline-offset:2px}
 
 @media (prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}}
 </style>
@@ -264,7 +265,10 @@ details.panel ul{margin:10px 0 0 18px;font-size:13.5px;color:var(--muted);displa
     </ul>
   </details>
 
-  <p class="foot">Estimates only · Weather data by Open-Meteo.com</p>
+  <p class="foot">Estimates only, not readings from the panels<br>
+    Weather and solar forecast by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a><br>
+    Satellite sunshine data by <a href="https://open-meteo.com/en/docs/satellite-radiation-api" target="_blank" rel="noopener">Open-Meteo</a>, from EUMETSAT and DWD weather satellites<br>
+    Data licensed under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a></p>
  </div>
 </main>
 
